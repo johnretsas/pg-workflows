@@ -1,7 +1,14 @@
 import { merge } from 'es-toolkit';
 import pg from 'pg';
 import { type Db, PgBoss } from 'pg-boss';
-import { DEFAULT_PGBOSS_SCHEMA, PAUSE_EVENT_NAME, WORKFLOW_RUN_QUEUE_NAME } from './constants';
+import {
+  DEFAULT_PGBOSS_SCHEMA,
+  invokeChildWorkflowTimelineKey,
+  isInvokeChildWorkflowTimelineEntry,
+  PAUSE_EVENT_NAME,
+  WORKFLOW_RUN_QUEUE_NAME,
+  waitForTimelineKey,
+} from './constants';
 import { runMigrations } from './db/migration';
 import {
   getWorkflowRun,
@@ -22,6 +29,7 @@ import {
   type InputParameters,
   type WorkflowLogger,
   type WorkflowRef,
+  type WorkflowRunOptions,
   type WorkflowRunProgress,
   WorkflowStatus,
 } from './types';
@@ -50,13 +58,7 @@ export type WorkflowClientOptions = {
   boss?: PgBoss;
 } & ({ pool: pg.Pool; connectionString?: never } | { connectionString: string; pool?: never });
 
-export type StartWorkflowOptions = {
-  resourceId?: string;
-  timeout?: number;
-  retries?: number;
-  expireInSeconds?: number;
-  idempotencyKey?: string;
-};
+export type StartWorkflowOptions = WorkflowRunOptions;
 
 const defaultLogger: WorkflowLogger = {
   log: (_message: string) => console.warn(_message),
@@ -225,9 +227,14 @@ export class WorkflowClient {
             input,
           };
 
+          // Same connection (`_db`) used for the workflow_runs INSERT is passed
+          // to `boss.send` so the pgboss.job INSERT joins the same transaction.
+          // The two writes commit or roll back together, so we never leak an
+          // orphan workflow_runs row when the queue insert fails.
           await this.boss.send(WORKFLOW_RUN_QUEUE_NAME, job, {
             startAfter: new Date(),
             expireInSeconds: options?.expireInSeconds ?? defaultExpireInSeconds,
+            db: _db,
           });
         }
 
@@ -327,6 +334,13 @@ export class WorkflowClient {
       );
     }
 
+    const currentStepId = current.currentStepId;
+    const currentStepTimelineEntry =
+      current.timeline[invokeChildWorkflowTimelineKey(currentStepId)];
+    if (isInvokeChildWorkflowTimelineEntry(currentStepTimelineEntry)) {
+      return current;
+    }
+
     return this.triggerEvent({
       runId,
       resourceId,
@@ -353,8 +367,13 @@ export class WorkflowClient {
       return run;
     }
 
-    const stepId = run.currentStepId;
-    const waitForEntry = run.timeline[`${stepId}-wait-for`];
+    const currentStepId = run.currentStepId;
+    const currentStepTimelineEntry = run.timeline[invokeChildWorkflowTimelineKey(currentStepId)];
+    if (isInvokeChildWorkflowTimelineEntry(currentStepTimelineEntry)) {
+      return run;
+    }
+
+    const waitForEntry = run.timeline[waitForTimelineKey(currentStepId)];
     if (!waitForEntry || typeof waitForEntry !== 'object' || !('waitFor' in waitForEntry)) {
       return run;
     }
@@ -381,7 +400,7 @@ export class WorkflowClient {
               resourceId,
               data: {
                 timeline: merge(freshRun.timeline, {
-                  [stepId]: {
+                  [currentStepId]: {
                     output: data ?? {},
                     timestamp: new Date(),
                   },
