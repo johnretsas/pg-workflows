@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.10.0 - 2026-05-16
+
+### Added
+
+- Added `step.invokeChildWorkflow()` for durable parent/child workflow orchestration. A parent can spawn a child workflow by ref or ID, pause itself with zero cost while the child runs, and resume with the child's output once it reaches a terminal state.
+
+### Fixed
+
+- Closed a race in `step.invokeChildWorkflow()` where a crash between committing the parent's pause and enqueuing the child job left the parent stuck in `PAUSED` forever. The child enqueue now runs inside the same transaction as the parent pause, so both succeed or roll back atomically.
+
 ## v0.9.0 - 2026-04-27
 
 ### Added
@@ -55,3 +65,4 @@ All notable changes to this project will be documented in this file.
 [v0.8.2]: https://github.com/SokratisVidros/pg-workflows/compare/v0.8.1...v0.8.2
 [v0.8.3]: https://github.com/SokratisVidros/pg-workflows/compare/v0.8.2...v0.8.3
 [v0.9.0]: https://github.com/SokratisVidros/pg-workflows/compare/v0.8.3...v0.9.0
+[v0.10.0]: https://github.com/SokratisVidros/pg-workflows/compare/v0.9.0...v0.10.0
