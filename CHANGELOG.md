@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.11.0 - 2026-05-26
+
+### Fixed
+
+- Kept `context.timeline` live across steps within a handler invocation so workflow authors observe outputs from just-completed steps instead of a stale snapshot taken at handler entry ([#35](https://github.com/SokratisVidros/pg-workflows/pull/35), fixes [#14](https://github.com/SokratisVidros/pg-workflows/issues/14)).
+
+### Documentation
+
+- Consolidated agent instructions into a single `AGENTS.md` as the source of truth for AI coding agents, with `CLAUDE.md` and `GEMINI.md` as symlinks.
+- Added the OpenTelemetry instrumentation design and implementation plan for [#34](https://github.com/SokratisVidros/pg-workflows/issues/34).
+
+### Changed
+
+- **BREAKING — curated public exports ([#37](https://github.com/SokratisVidros/pg-workflows/pull/37)):** replaced blanket `export *` re-exports with an explicit public surface. The following are no longer importable from `pg-workflows` or `pg-workflows/client`: `parseDuration`, `validate*` helpers, the `StepType` enum, and the internal types `StepInternalDefinition`, `WorkflowInternalDefinition`, `WorkflowInternal*Logger*`, `WorkflowFactory`, and `DurationObject`. `WorkflowRun` is now exported from the main entry, and the `pg-workflows/client` entry exposes the error classes and the start-workflow options type.
+- **BREAKING — renamed `WorkflowRunOptions` to `StartWorkflowOptions` ([#38](https://github.com/SokratisVidros/pg-workflows/pull/38)):** the type is now aligned with the `startWorkflow()` method; update imports accordingly. The `batchSize` option on `engine.startWorkflow` is also removed (it was a no-op that was never read by worker creation).
+
 ## v0.10.0 - 2026-05-16
 
 ### Added
@@ -66,3 +82,4 @@ All notable changes to this project will be documented in this file.
 [v0.8.3]: https://github.com/SokratisVidros/pg-workflows/compare/v0.8.2...v0.8.3
 [v0.9.0]: https://github.com/SokratisVidros/pg-workflows/compare/v0.8.3...v0.9.0
 [v0.10.0]: https://github.com/SokratisVidros/pg-workflows/compare/v0.9.0...v0.10.0
+[v0.11.0]: https://github.com/SokratisVidros/pg-workflows/compare/v0.10.0...v0.11.0
