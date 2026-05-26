@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.12.0 - 2026-05-26
+
+### Added
+
+- Added first-party OpenTelemetry instrumentation via `otelPlugin()` ([#36](https://github.com/SokratisVidros/pg-workflows/pull/36), closes [#34](https://github.com/SokratisVidros/pg-workflows/issues/34)). Each worker execution emits one `pg_workflows.workflow.run` span with child spans per step kind (`step.run`, `step.waitFor`, `step.pause`, `step.waitUntil`, `step.invokeChildWorkflow`); spans replayed from the step cache are suppressed and errors are recorded on the span. `@opentelemetry/api` is an optional peer dependency.
+- Extended `WorkflowPlugin` with an optional `wrap` hook and exposed `resourceId` and `attempt` on `WorkflowContext` so plugins can compose middleware around the workflow handler with full execution context.
+
 ## v0.11.0 - 2026-05-26
 
 ### Fixed
