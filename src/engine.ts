@@ -1119,15 +1119,13 @@ export class WorkflowEngine {
 
       let step = { ...baseStep };
       const plugins = workflow.plugins ?? [];
-      for (const plugin of plugins) {
-        const extra = plugin.methods(step);
-        step = { ...step, ...extra };
-      }
 
       const context: WorkflowContext = {
         input: run.input as InferInputParameters<InputParameters>,
         workflowId: run.workflowId,
         runId: run.id,
+        resourceId: run.resourceId ?? undefined,
+        attempt: run.retryCount,
         get timeline() {
           // Read through to the live run so callers see entries written by
           // previously completed steps within the same handler invocation.
@@ -1137,7 +1135,22 @@ export class WorkflowEngine {
         step,
       };
 
-      const result = await workflow.handler(context);
+      for (const plugin of plugins) {
+        const extra = plugin.methods(step, context);
+        step = { ...step, ...extra };
+        context.step = step;
+      }
+
+      let next: () => Promise<unknown> = () => workflow.handler(context);
+      for (const plugin of [...plugins].reverse()) {
+        if (plugin.wrap) {
+          const inner = next;
+          const wrap = plugin.wrap;
+          next = () => wrap(context, inner);
+        }
+      }
+
+      const result = await next();
 
       run = await this.getRun({ runId, resourceId: scopedResourceId });
 
