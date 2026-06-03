@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.13.0 - 2026-06-03
+
+### Added
+
+- Added recurring workflow schedules via a new `schedule` option on `workflow()` ([#7](https://github.com/SokratisVidros/pg-workflows/pull/7), closes [#7](https://github.com/SokratisVidros/pg-workflows/issues/7)). Accepts a cron expression, a `parse-duration` string (e.g. `'5m'`, `'1 hour'`), or a `DurationObject`; non-cron values are auto-translated to cron only when the interval divides cleanly. Schedules register with pg-boss on `engine.start()`, unregister on stop/unregister, and stamp the fire time into the new `workflow_runs.scheduled_for` column. A top-level `timezone` option is supported for cron expressions.
+- Added `ctx.schedule.timestamp` on the workflow context for schedule-triggered runs; manual `engine.startWorkflow()` runs leave `ctx.schedule` undefined so handlers can branch on the trigger source.
+- Added `engine.getWorkflowLastRun({ workflowId, resourceId? })` which returns the most recent run for a workflow — useful as a cursor for incremental syncs without denormalizing previous-run state into context.
+
+[v0.13.0]: https://github.com/SokratisVidros/pg-workflows/compare/v0.12.0...v0.13.0
+
 ## v0.12.0 - 2026-05-26
 
 ### Added
