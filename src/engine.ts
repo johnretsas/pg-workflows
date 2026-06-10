@@ -200,6 +200,8 @@ export class WorkflowEngine {
       for (const workflow of this.unregisteredWorkflows.values()) {
         await this.registerWorkflow(workflow);
       }
+
+      this.unregisteredWorkflows.clear();
     }
 
     // pg-boss handles retries: every send sets retryLimit + retryBackoff
