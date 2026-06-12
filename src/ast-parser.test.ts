@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import type { PgBoss } from 'pg-boss';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { workflow } from './definition';
 import { WorkflowEngine } from './engine';
 import { getBoss } from './tests/pgboss';
@@ -62,16 +63,20 @@ describe('AST Parser for Workflow Steps', () => {
   });
 
   it('should detect conditional steps', async () => {
-    const conditionalWorkflow = workflow('conditional-workflow', async ({ step, input }) => {
-      await step.run('step-1', async () => 'result-1');
+    const conditionalWorkflow = workflow(
+      'conditional-workflow',
+      async ({ step, input }) => {
+        await step.run('step-1', async () => 'result-1');
 
-      if (input.condition) {
-        await step.run('conditional-step', async () => 'conditional-result');
-      }
+        if (input.condition) {
+          await step.run('conditional-step', async () => 'conditional-result');
+        }
 
-      await step.run('step-3', async () => 'result-3');
-      return 'completed';
-    });
+        await step.run('step-3', async () => 'result-3');
+        return 'completed';
+      },
+      { inputSchema: z.object({ condition: z.boolean() }) },
+    );
 
     const engine = new WorkflowEngine({ pool: testPool, boss: testBoss });
     await engine.registerWorkflow(conditionalWorkflow);
@@ -199,53 +204,96 @@ describe('AST Parser for Workflow Steps', () => {
 
     const engine = new WorkflowEngine({ pool: testPool, boss: testBoss });
     await engine.registerWorkflow(mixedStepWorkflow);
+
+    expect(engine.workflows.get('mixed-step-workflow')?.steps).toEqual([
+      { id: 'step-1', type: StepType.RUN, conditional: false, loop: false, isDynamic: false },
+      { id: 'step-2', type: StepType.WAIT_FOR, conditional: false, loop: false, isDynamic: false },
+      { id: 'step-3', type: StepType.PAUSE, conditional: false, loop: false, isDynamic: false },
+      { id: 'step-4', type: StepType.RUN, conditional: false, loop: false, isDynamic: false },
+    ]);
   });
 
   it('should handle nested conditionals and loops', async () => {
-    const nestedWorkflow = workflow('nested-workflow', async ({ step, input }) => {
-      await step.run('start', async () => 'started');
+    const nestedWorkflow = workflow(
+      'nested-workflow',
+      async ({ step, input }) => {
+        await step.run('start', async () => 'started');
 
-      for (let i = 0; i < input.outerCount; i++) {
-        if (i % 2 === 0) {
-          await step.run(`even-${i}`, async () => `even-result-${i}`);
+        for (let i = 0; i < input.outerCount; i++) {
+          if (i % 2 === 0) {
+            await step.run(`even-${i}`, async () => `even-result-${i}`);
 
-          for (let j = 0; j < 2; j++) {
-            await step.run(`nested-${i}-${j}`, async () => `nested-result-${i}-${j}`);
+            for (let j = 0; j < 2; j++) {
+              await step.run(`nested-${i}-${j}`, async () => `nested-result-${i}-${j}`);
+            }
+          } else {
+            await step.run(`odd-${i}`, async () => `odd-result-${i}`);
           }
-        } else {
-          await step.run(`odd-${i}`, async () => `odd-result-${i}`);
         }
-      }
 
-      await step.run('end', async () => 'ended');
-      return 'completed';
-    });
+        await step.run('end', async () => 'ended');
+        return 'completed';
+      },
+      { inputSchema: z.object({ outerCount: z.number() }) },
+    );
 
     const engine = new WorkflowEngine({ pool: testPool, boss: testBoss });
     await engine.registerWorkflow(nestedWorkflow);
+
+    expect(engine.workflows.get('nested-workflow')?.steps).toEqual([
+      { id: 'start', type: StepType.RUN, conditional: false, loop: false, isDynamic: false },
+      { id: `even-\${...}`, type: StepType.RUN, conditional: true, loop: true, isDynamic: true },
+      {
+        id: `nested-\${...}-\${...}`,
+        type: StepType.RUN,
+        conditional: true,
+        loop: true,
+        isDynamic: true,
+      },
+      { id: `odd-\${...}`, type: StepType.RUN, conditional: true, loop: true, isDynamic: true },
+      { id: 'end', type: StepType.RUN, conditional: false, loop: false, isDynamic: false },
+    ]);
   });
 
   it('should handle switch statements', async () => {
-    const switchWorkflow = workflow('switch-workflow', async ({ step, input }) => {
-      await step.run('step-1', async () => 'result-1');
+    const switchWorkflow = workflow(
+      'switch-workflow',
+      async ({ step, input }) => {
+        await step.run('step-1', async () => 'result-1');
 
-      switch (input.type) {
-        case 'A':
-          await step.run('handle-a', async () => 'handled-a');
-          break;
-        case 'B':
-          await step.run('handle-b', async () => 'handled-b');
-          break;
-        default:
-          await step.run('handle-default', async () => 'handled-default');
-      }
+        switch (input.type) {
+          case 'A':
+            await step.run('handle-a', async () => 'handled-a');
+            break;
+          case 'B':
+            await step.run('handle-b', async () => 'handled-b');
+            break;
+          default:
+            await step.run('handle-default', async () => 'handled-default');
+        }
 
-      await step.run('step-3', async () => 'result-3');
-      return 'completed';
-    });
+        await step.run('step-3', async () => 'result-3');
+        return 'completed';
+      },
+      { inputSchema: z.object({ type: z.string() }) },
+    );
 
     const engine = new WorkflowEngine({ pool: testPool, boss: testBoss });
     await engine.registerWorkflow(switchWorkflow);
+
+    expect(engine.workflows.get('switch-workflow')?.steps).toEqual([
+      { id: 'step-1', type: StepType.RUN, conditional: false, loop: false, isDynamic: false },
+      { id: 'handle-a', type: StepType.RUN, conditional: true, loop: false, isDynamic: false },
+      { id: 'handle-b', type: StepType.RUN, conditional: true, loop: false, isDynamic: false },
+      {
+        id: 'handle-default',
+        type: StepType.RUN,
+        conditional: true,
+        loop: false,
+        isDynamic: false,
+      },
+      { id: 'step-3', type: StepType.RUN, conditional: false, loop: false, isDynamic: false },
+    ]);
   });
 
   it('should throw error for duplicate static step IDs', async () => {
