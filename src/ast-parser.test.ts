@@ -330,7 +330,7 @@ describe('AST Parser for Workflow Steps', () => {
     );
   });
 
-  it('does not catch externally defined workflow functions', async () => {
+  it('does not parse the steps of externally defined workflow functions', async () => {
     const workflowHandler = async (step: StepBaseContext, _input: unknown) => {
       await step.run('process-item', async () => 'result-1');
     };
