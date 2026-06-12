@@ -35,6 +35,7 @@ import {
   type InferInputParameters,
   type InputParameters,
   type StartWorkflowOptions,
+  type StepBaseContext,
   StepType,
   type WorkflowContext,
   type WorkflowDefinition,
@@ -63,7 +64,7 @@ export type WorkflowEngineOptions = {
   boss?: PgBoss;
 } & ({ pool: pg.Pool; connectionString?: never } | { connectionString: string; pool?: never });
 
-const StepTypeToIcon = {
+const StepTypeToIcon: Record<StepType, string> = {
   [StepType.RUN]: 'λ',
   [StepType.WAIT_FOR]: '○',
   [StepType.PAUSE]: '⏸',
@@ -357,7 +358,7 @@ export class WorkflowEngine {
     this.workflows.set(definition.id, {
       ...definition,
       steps,
-    } as WorkflowInternalDefinition);
+    });
 
     if (this._started && resolvedSchedule) {
       await this.registerWorkflowSchedule(definition.id, resolvedSchedule);
@@ -1117,121 +1118,8 @@ export class WorkflowEngine {
         );
       }
 
-      const baseStep = {
-        run: async <T>(stepId: string, handler: () => Promise<T>) => {
-          if (!run) {
-            throw new WorkflowEngineError('Missing workflow run', workflowId, runId);
-          }
-          return this.runStep({ stepId, run, handler }) as Promise<T>;
-        },
-        waitFor: async <T extends InputParameters>(
-          stepId: string,
-          { eventName, timeout }: { eventName: string; timeout?: number; schema?: T },
-        ) => {
-          if (!run) {
-            throw new WorkflowEngineError('Missing workflow run', workflowId, runId);
-          }
-          const timeoutDate = timeout ? new Date(Date.now() + timeout) : undefined;
-          return this.waitStep({ run, stepId, eventName, timeoutDate }) as Promise<
-            InferInputParameters<T> | undefined
-          >;
-        },
-        waitUntil: async (
-          stepId: string,
-          dateOrOptions: Date | string | { date: Date | string },
-        ) => {
-          if (!run) {
-            throw new WorkflowEngineError('Missing workflow run', workflowId, runId);
-          }
-          const date =
-            dateOrOptions instanceof Date
-              ? dateOrOptions
-              : typeof dateOrOptions === 'string'
-                ? new Date(dateOrOptions)
-                : dateOrOptions.date instanceof Date
-                  ? dateOrOptions.date
-                  : new Date(dateOrOptions.date);
-          await this.waitStep({ run, stepId, timeoutDate: date });
-        },
-        pause: async (stepId: string) => {
-          if (!run) {
-            throw new WorkflowEngineError('Missing workflow run', workflowId, runId);
-          }
-          await this.waitStep({ run, stepId, eventName: PAUSE_EVENT_NAME });
-        },
-        delay: async (stepId: string, duration: Duration) => {
-          if (!run) {
-            throw new WorkflowEngineError('Missing workflow run', workflowId, runId);
-          }
-          await this.waitStep({
-            run,
-            stepId,
-            timeoutDate: new Date(Date.now() + parseDuration(duration)),
-          });
-        },
-        get sleep() {
-          return this.delay;
-        },
-        poll: async <T>(
-          stepId: string,
-          conditionFn: () => Promise<T | false>,
-          options?: { interval?: Duration; timeout?: Duration },
-        ) => {
-          if (!run) {
-            throw new WorkflowEngineError('Missing workflow run', workflowId, runId);
-          }
-          const intervalMs = parseDuration(options?.interval ?? '30s');
-          if (intervalMs < 30_000) {
-            throw new WorkflowEngineError(
-              `step.poll interval must be at least 30s (got ${intervalMs}ms)`,
-              workflowId,
-              runId,
-            );
-          }
-          const timeoutMs = options?.timeout ? parseDuration(options.timeout) : undefined;
-          return this.pollStep({ run, stepId, conditionFn, intervalMs, timeoutMs }) as Promise<
-            { timedOut: false; data: T } | { timedOut: true }
-          >;
-        },
-        invokeChildWorkflow: async <TInput extends InputParameters, TOutput = unknown>(
-          stepId: string,
-          refOrParams:
-            | WorkflowRef<TInput, TOutput>
-            | {
-                workflowId: string;
-                input: unknown;
-                resourceId?: string;
-                idempotencyKey?: string;
-                options?: StartWorkflowOptions;
-              },
-          inputArg?: InferInputParameters<TInput>,
-          optionsArg?: StartWorkflowOptions,
-        ) => {
-          if (!run) {
-            throw new WorkflowEngineError('Missing workflow run', workflowId, runId);
-          }
+      let step = this.createBaseStep(run, workflowId, runId);
 
-          // Resolve overload input (typed ref or params object) into one shape
-          // before handing off to the durable child-invocation implementation.
-          const resolvedChildCall = this.resolveWorkflowRunParameters(
-            refOrParams,
-            inputArg,
-            optionsArg,
-          );
-          const childWorkflowInvocation = {
-            run,
-            stepId,
-            workflowId: resolvedChildCall.workflowId,
-            input: resolvedChildCall.input,
-            options: resolvedChildCall.options,
-            resourceId: resolvedChildCall.resourceId,
-            idempotencyKey: resolvedChildCall.idempotencyKey,
-          };
-          return this.invokeChildWorkflowStep(childWorkflowInvocation) as Promise<TOutput>;
-        },
-      };
-
-      let step = { ...baseStep };
       const plugins = workflow.plugins ?? [];
 
       const context: WorkflowContext = {
@@ -1348,6 +1236,100 @@ export class WorkflowEngine {
       runId,
       workflowId: run.workflowId,
     });
+  }
+
+  private createBaseStep(run: WorkflowRun, workflowId: string, runId: string): StepBaseContext {
+    return {
+      run: async <T>(stepId: string, handler: () => Promise<T>) => {
+        return this.runStep({ stepId, run, handler }) as Promise<T>;
+      },
+      waitFor: async <T extends InputParameters>(
+        stepId: string,
+        { eventName, timeout }: { eventName: string; timeout?: number; schema?: T },
+      ) => {
+        const timeoutDate = timeout ? new Date(Date.now() + timeout) : undefined;
+
+        return this.waitStep({ run, stepId, eventName, timeoutDate }) as Promise<
+          InferInputParameters<T> | undefined
+        >;
+      },
+      waitUntil: async (stepId: string, dateOrOptions: Date | string | { date: Date | string }) => {
+        const date =
+          dateOrOptions instanceof Date
+            ? dateOrOptions
+            : typeof dateOrOptions === 'string'
+              ? new Date(dateOrOptions)
+              : dateOrOptions.date instanceof Date
+                ? dateOrOptions.date
+                : new Date(dateOrOptions.date);
+        await this.waitStep({ run, stepId, timeoutDate: date });
+      },
+      pause: async (stepId: string) => {
+        await this.waitStep({ run, stepId, eventName: PAUSE_EVENT_NAME });
+      },
+      delay: async (stepId: string, duration: Duration) => {
+        await this.waitStep({
+          run,
+          stepId,
+          timeoutDate: new Date(Date.now() + parseDuration(duration)),
+        });
+      },
+      get sleep() {
+        return this.delay;
+      },
+      poll: async <T>(
+        stepId: string,
+        conditionFn: () => Promise<T | false>,
+        options?: { interval?: Duration; timeout?: Duration },
+      ) => {
+        const intervalMs = parseDuration(options?.interval ?? '30s');
+        if (intervalMs < 30_000) {
+          throw new WorkflowEngineError(
+            `step.poll interval must be at least 30s (got ${intervalMs}ms)`,
+            workflowId,
+            runId,
+          );
+        }
+        const timeoutMs = options?.timeout ? parseDuration(options.timeout) : undefined;
+
+        return this.pollStep({ run, stepId, conditionFn, intervalMs, timeoutMs }) as Promise<
+          { timedOut: false; data: T } | { timedOut: true }
+        >;
+      },
+      invokeChildWorkflow: async <TInput extends InputParameters, TOutput = unknown>(
+        stepId: string,
+        refOrParams:
+          | WorkflowRef<TInput, TOutput>
+          | {
+              workflowId: string;
+              input: unknown;
+              resourceId?: string;
+              idempotencyKey?: string;
+              options?: StartWorkflowOptions;
+            },
+        inputArg?: InferInputParameters<TInput>,
+        optionsArg?: StartWorkflowOptions,
+      ) => {
+        // Resolve overload input (typed ref or params object) into one shape
+        // before handing off to the durable child-invocation implementation.
+        const resolvedChildCall = this.resolveWorkflowRunParameters(
+          refOrParams,
+          inputArg,
+          optionsArg,
+        );
+        const childWorkflowInvocation = {
+          run,
+          stepId,
+          workflowId: resolvedChildCall.workflowId,
+          input: resolvedChildCall.input,
+          options: resolvedChildCall.options,
+          resourceId: resolvedChildCall.resourceId,
+          idempotencyKey: resolvedChildCall.idempotencyKey,
+        };
+
+        return this.invokeChildWorkflowStep(childWorkflowInvocation) as Promise<TOutput>;
+      },
+    };
   }
 
   private getCachedStepEntry(
