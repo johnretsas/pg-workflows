@@ -6,7 +6,7 @@ import { workflow } from './definition';
 import { WorkflowEngine } from './engine';
 import { getBoss } from './tests/pgboss';
 import { createTestDatabase } from './tests/test-db';
-import { StepType } from './types';
+import { type StepBaseContext, StepType } from './types';
 
 let testBoss: PgBoss;
 let testPool: pg.Pool;
@@ -328,5 +328,23 @@ describe('AST Parser for Workflow Steps', () => {
     await expect(engine.registerWorkflow(duplicateDynamicWorkflow)).rejects.toThrow(
       "Duplicate step ID detected: 'process-item'. Step IDs must be unique within a workflow.",
     );
+  });
+
+  it('does not catch externally defined workflow functions', async () => {
+    const workflowHandler = async (step: StepBaseContext, _input: unknown) => {
+      await step.run('process-item', async () => 'result-1');
+    };
+
+    const testWorkflow = workflow(
+      'parsing-will-not-work-at-this-workflow',
+      async ({ step, input }) => {
+        workflowHandler(step, input);
+      },
+    );
+
+    const engine = new WorkflowEngine({ pool: testPool, boss: testBoss });
+    await engine.registerWorkflow(testWorkflow);
+
+    expect(engine.workflows.get('parsing-will-not-work-at-this-workflow')?.steps).toEqual([]);
   });
 });
