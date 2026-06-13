@@ -490,6 +490,22 @@ export class WorkflowEngine {
     return run;
   }
 
+  private async createChildWorkflowRun(params: {
+    workflowId: string;
+    input: unknown;
+    resourceId?: string;
+    idempotencyKey?: string;
+    options?: StartWorkflowOptions;
+    parentRunId: string;
+    parentStepId: string;
+    parentResourceId?: string;
+    scheduledAt?: Date;
+    enqueue?: boolean;
+    db?: Db;
+  }): Promise<{ run: WorkflowRun; created: boolean }> {
+    return this.createWorkflowRun(params);
+  }
+
   private async createWorkflowRun({
     workflowId,
     input,
@@ -1527,7 +1543,7 @@ export class WorkflowEngine {
           return;
         }
 
-        const result = await this.createWorkflowRun({
+        const result = await this.createChildWorkflowRun({
           workflowId,
           input,
           resourceId: childResourceId,
