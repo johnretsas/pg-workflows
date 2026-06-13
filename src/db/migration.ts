@@ -24,6 +24,21 @@ export async function runMigrations(db: Db): Promise<void> {
   const commands: string[] = [];
 
   if (currentVersion < 1) {
+    // Check if a foreign `workflow_runs` already exists, if yes
+    // bail, in order to avoid corrupting existing tables
+    const existing = await db.executeSql(
+      `SELECT 1 FROM information_schema.tables
+      WHERE table_schema = current_schema() AND table_name = 'workflow_runs' LIMIT 1`,
+      [],
+    );
+
+    if (existing.rows.length > 0) {
+      throw new Error(
+        `pg-workflows: a "workflow_runs" table already exists in this schema but was not ` +
+          `created by pg-workflows. Point the workflow engine at a dedicated schema/database.`,
+      );
+    }
+
     commands.push(`
       CREATE TABLE IF NOT EXISTS workflow_runs (
         id varchar(32) PRIMARY KEY NOT NULL,
