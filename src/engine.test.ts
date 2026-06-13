@@ -1359,6 +1359,7 @@ describe('WorkflowEngine', () => {
         parentRunId: null,
         parentStepId: null,
         parentResourceId: null,
+        scheduledAt: null,
       };
       const lockedParentRun: WorkflowRun = {
         ...parentRun,
@@ -1420,6 +1421,7 @@ describe('WorkflowEngine', () => {
         parentRunId: null,
         parentStepId: null,
         parentResourceId: null,
+        scheduledAt: null,
       };
       const childRun: WorkflowRun = {
         id: 'invoke-child-resource-replay-run',
@@ -1444,6 +1446,7 @@ describe('WorkflowEngine', () => {
         parentRunId: parentRun.id,
         parentStepId: 'call-child',
         parentResourceId: resourceId,
+        scheduledAt: null,
       };
       const lockedParentRun: WorkflowRun = {
         ...parentRun,
