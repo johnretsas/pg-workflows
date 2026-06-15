@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.13.1 - 2026-06-15
+
+### Fixed
+
+- Cleared the internal `unregisteredWorkflows` map after the registration loop in `engine.start()`, preventing workflows passed at construction from being re-registered on subsequent `start()` calls ([#39](https://github.com/SokratisVidros/pg-workflows/pull/39)).
+
+[v0.13.1]: https://github.com/SokratisVidros/pg-workflows/compare/v0.13.0...v0.13.1
+
 ## v0.13.0 - 2026-06-03
 
 ### Added
