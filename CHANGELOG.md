@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.13.2 - 2026-06-16
+
+### Fixed
+
+- Installation now fails fast with a clear error when a `workflow_runs` table already exists in the schema but was not created by pg-workflows, preventing accidental corruption of an unrelated table ([#40](https://github.com/SokratisVidros/pg-workflows/pull/40)).
+- Migrations now detect mismatched partial schema state (`workflow_runs` and `workflow_schema_version` existing without the other) and surface a clear error instead of proceeding.
+
+### Changed
+
+- Internal engine refactoring to couple step methods to step types and tighten child-workflow run typing ([#40](https://github.com/SokratisVidros/pg-workflows/pull/40)).
+
+[v0.13.2]: https://github.com/SokratisVidros/pg-workflows/compare/v0.13.1...v0.13.2
+
 ## v0.13.1 - 2026-06-15
 
 ### Fixed
