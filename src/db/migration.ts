@@ -24,17 +24,33 @@ export async function runMigrations(db: Db): Promise<void> {
   const commands: string[] = [];
 
   if (currentVersion < 1) {
-    // Check if a foreign `workflow_runs` already exists, if yes
-    // bail, in order to avoid corrupting existing tables
+    // On first run, we run a check to see if there is an existing foreign
+    // `workflow_runs` table. To decide on that, we check if the `workflow_runs`
+    // exists but a `workflow_schema_version` table doesn't. If that is true
+    // then `workflow_runs` is foreign and we should fail lest we start
+    // adding rows there, corrupting it.
+    // This is not airtight, but serves as an extra safety check for now.
     const existing = await db.executeSql(
-      `SELECT 1 FROM information_schema.tables
-      WHERE table_schema = current_schema() AND table_name = 'workflow_runs' LIMIT 1`,
+      `SELECT
+         to_regclass('workflow_runs') IS NOT NULL AS has_runs_table,
+         to_regclass('workflow_schema_version') IS NOT NULL AS has_version_table`,
       [],
     );
 
-    if (existing.rows.length > 0) {
+    const row = existing.rows[0] as
+      | { has_runs_table: boolean; has_version_table: boolean }
+      | undefined;
+
+    if (row?.has_runs_table && !row.has_version_table) {
       throw new Error(
         `pg-workflows: a "workflow_runs" table already exists in this schema but was not ` +
+          `created by pg-workflows. Point the workflow engine at a dedicated schema/database.`,
+      );
+    }
+
+    if (!row?.has_runs_table && row?.has_version_table) {
+      throw new Error(
+        `pg-workflows: a "workflow_schema_version" table already exists in this schema but was not ` +
           `created by pg-workflows. Point the workflow engine at a dedicated schema/database.`,
       );
     }
