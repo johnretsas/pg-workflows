@@ -1,5 +1,5 @@
-import type { Db } from 'pg-boss';
 import type pg from 'pg';
+import type { Db } from 'pg-boss';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDatabase, createTestDatabase } from '../tests/test-db';
 import { runMigrations } from './migration';
