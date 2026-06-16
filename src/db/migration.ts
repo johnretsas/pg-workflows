@@ -28,7 +28,8 @@ export async function runMigrations(db: Db): Promise<void> {
     // `workflow_runs` table. To decide on that, we check if the `workflow_runs`
     // exists but a `workflow_schema_version` table doesn't. If that is true
     // then `workflow_runs` is foreign and we should fail lest we start
-    // adding rows there, corrupting it.
+    // adding rows there, corrupting it. We also do the reverse check.
+    // We are basing this off the fact that our transaction creates both or no tables
     // This is not airtight, but serves as an extra safety check for now.
     const existing = await db.executeSql(
       `SELECT
