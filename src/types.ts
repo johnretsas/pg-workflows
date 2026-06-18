@@ -216,7 +216,23 @@ export type WorkflowInternalLoggerContext = {
   runId?: string;
   workflowId?: string;
 };
+
 export interface WorkflowInternalLogger {
   log(message: string, context?: WorkflowInternalLoggerContext): void;
   error(message: string, error: Error, context?: WorkflowInternalLoggerContext): void;
 }
+
+const _STEP_BASE_METHOD_TO_TYPE: Record<keyof StepBaseContext, StepType> = {
+  run: StepType.RUN,
+  waitFor: StepType.WAIT_FOR,
+  waitUntil: StepType.WAIT_UNTIL,
+  delay: StepType.DELAY,
+  sleep: StepType.DELAY,
+  pause: StepType.PAUSE,
+  poll: StepType.POLL,
+  invokeChildWorkflow: StepType.INVOKE_CHILD_WORKFLOW,
+};
+
+export const STEP_BASE_METHOD_TYPES: ReadonlyMap<string, StepType> = new Map(
+  Object.entries(_STEP_BASE_METHOD_TO_TYPE),
+);

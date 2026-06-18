@@ -1,6 +1,6 @@
 import * as ts from 'typescript';
 import type { StepInternalDefinition, WorkflowContext } from './types';
-import { StepType } from './types';
+import { STEP_BASE_METHOD_TYPES } from './types';
 
 type ParseWorkflowHandlerReturnType = {
   steps: StepInternalDefinition[];
@@ -73,21 +73,11 @@ export function parseWorkflowHandler(
       const objectName = propertyAccess.expression.getText(sourceFile);
       const methodName = propertyAccess.name.text;
 
-      if (
-        objectName === 'step' &&
-        (methodName === 'run' ||
-          methodName === 'waitFor' ||
-          methodName === 'pause' ||
-          methodName === 'waitUntil' ||
-          methodName === 'delay' ||
-          methodName === 'sleep' ||
-          methodName === 'poll' ||
-          methodName === 'invokeChildWorkflow')
-      ) {
+      const stepType = objectName === 'step' ? STEP_BASE_METHOD_TYPES.get(methodName) : undefined;
+      if (stepType !== undefined) {
         const firstArg = node.arguments[0];
         if (firstArg) {
           const { id, isDynamic } = extractStepId(firstArg);
-          const stepType = methodName === 'sleep' ? StepType.DELAY : (methodName as StepType);
 
           const stepDefinition: StepInternalDefinition = {
             id,

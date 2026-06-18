@@ -674,6 +674,94 @@ describe('WorkflowEngine', () => {
         expect(run2.idempotencyKey).toBe('test-key-1');
       });
 
+      it('reusing an idempotencyKey enqueues no second job and the first one is not affected', async () => {
+        const run1 = await engine.startWorkflow({
+          resourceId,
+          workflowId: 'test-workflow',
+          input: { data: 'hello' },
+          idempotencyKey: 'idem-noop',
+        });
+
+        await expect
+          .poll(async () => (await engine.getRun({ runId: run1.id, resourceId })).status)
+          .toBe(WorkflowStatus.COMPLETED);
+
+        const completedRun1 = await engine.getRun({ runId: run1.id, resourceId });
+
+        const sendSpy = vi.spyOn(testBoss, 'send');
+        try {
+          const run2 = await engine.startWorkflow({
+            resourceId,
+            workflowId: 'test-workflow',
+            input: { data: 'hello' },
+            idempotencyKey: 'idem-noop',
+          });
+
+          expect(run2.id).toBe(run1.id);
+          expect(sendSpy).not.toHaveBeenCalled();
+        } finally {
+          sendSpy.mockRestore();
+        }
+
+        const after = await engine.getRun({ runId: run1.id, resourceId });
+        expect(after.status).toBe(WorkflowStatus.COMPLETED);
+        expect(after.output).toEqual(completedRun1.output);
+        expect(after.updatedAt).toEqual(completedRun1.updatedAt);
+      });
+
+      it('reusing an idempotencyKey while the first run is mid-execution is a no-op and leaves it in-flight', async () => {
+        const wf = workflow('idem-midflight', async ({ step }) => {
+          await step.run('s1', async () => 'done-1');
+          await step.waitFor('gate', { eventName: 'go' });
+
+          return 'completed';
+        });
+
+        await engine.registerWorkflow(wf);
+
+        const run1 = await engine.startWorkflow({
+          resourceId,
+          workflowId: 'idem-midflight',
+          input: {},
+          idempotencyKey: 'idem-mid',
+        });
+
+        await expect
+          .poll(async () => (await engine.getRun({ runId: run1.id, resourceId })).status)
+          .toBe(WorkflowStatus.PAUSED);
+
+        const inflight = await engine.getRun({ runId: run1.id, resourceId });
+
+        const sendSpy = vi.spyOn(testBoss, 'send');
+        try {
+          const run2 = await engine.startWorkflow({
+            resourceId,
+            workflowId: 'idem-midflight',
+            input: {},
+            idempotencyKey: 'idem-mid',
+          });
+
+          expect(run2.id).toBe(run1.id);
+          expect(run2.status).toBe(WorkflowStatus.PAUSED);
+          expect(sendSpy).not.toHaveBeenCalled();
+        } finally {
+          sendSpy.mockRestore();
+        }
+
+        const after = await engine.getRun({ runId: run1.id, resourceId });
+        expect(after.timeline).toEqual(inflight.timeline);
+
+        expect(after.timeline).toMatchObject({
+          s1: { output: 'done-1' },
+          'gate-wait-for': { waitFor: { eventName: 'go' } },
+        });
+
+        await engine.triggerEvent({ runId: run1.id, resourceId, eventName: 'go' });
+        await expect
+          .poll(async () => (await engine.getRun({ runId: run1.id, resourceId })).status)
+          .toBe(WorkflowStatus.COMPLETED);
+      });
+
       it('should create two runs when no idempotencyKey is provided', async () => {
         const run1 = await engine.startWorkflow({
           resourceId,
@@ -1271,6 +1359,7 @@ describe('WorkflowEngine', () => {
         parentRunId: null,
         parentStepId: null,
         parentResourceId: null,
+        scheduledAt: null,
       };
       const lockedParentRun: WorkflowRun = {
         ...parentRun,
@@ -1332,6 +1421,7 @@ describe('WorkflowEngine', () => {
         parentRunId: null,
         parentStepId: null,
         parentResourceId: null,
+        scheduledAt: null,
       };
       const childRun: WorkflowRun = {
         id: 'invoke-child-resource-replay-run',
@@ -1356,6 +1446,7 @@ describe('WorkflowEngine', () => {
         parentRunId: parentRun.id,
         parentStepId: 'call-child',
         parentResourceId: resourceId,
+        scheduledAt: null,
       };
       const lockedParentRun: WorkflowRun = {
         ...parentRun,
