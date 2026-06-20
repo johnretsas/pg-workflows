@@ -633,7 +633,9 @@ export class WorkflowEngine {
     });
   }
 
-  private async notifyParentOfChildTerminalRun(childRun: WorkflowRun) {
+  async notifyParentOfChildTerminalRun(
+    childRun: Pick<WorkflowRun, 'id' | 'parentRunId' | 'parentStepId' | 'parentResourceId'>,
+  ): Promise<void> {
     if (!childRun.parentRunId || !childRun.parentStepId) {
       return;
     }

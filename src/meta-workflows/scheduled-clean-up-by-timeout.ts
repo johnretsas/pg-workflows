@@ -11,11 +11,16 @@ const selectExpiredWorkflowsByTimeoutPage = `
     SELECT id FROM workflow_runs WHERE status IN ('running', 'paused') AND timeout_at < NOW() LIMIT ${PAGE}
 `;
 
+/**
+ * This meta workflow is registered by the engine's constructor and runs on a schedule.
+ * Every time it runs, it checks for workflow runs that have explicit timeout and have been sitting
+ * in 'running' or 'paused' but have expired, and sets them to 'failed'.
+ */
 const scheduledCleanUpByTimeout: (
   e: WorkflowEngine,
   db: Db,
   config?: ScheduledCleanUpByTimeoutConfig,
-) => WorkflowDefinition<InputParameters> = (_engine, db, config) =>
+) => WorkflowDefinition<InputParameters> = (engine, db, config) =>
   workflow(
     '__pgw-scheduled-clean-up-by-timeout',
     async ({ step, logger }) => {
@@ -33,22 +38,39 @@ const scheduledCleanUpByTimeout: (
           const rows = expired.rows as { id: string }[];
           const ids = rows.map((r) => r.id);
 
-          if (ids.length === 0) return { cleaned: 0 };
+          if (ids.length === 0) return { selected: 0, cleaned: 0 };
 
           const updated = await db.executeSql(
             `UPDATE workflow_runs
              SET status = 'failed', error = COALESCE(error, 'Workflow run timed out'), updated_at = NOW()
-             WHERE id = ANY($1)
-             RETURNING id`,
+             WHERE id = ANY($1) AND status IN ('running','paused') AND timeout_at < NOW()
+             RETURNING id, parent_run_id, parent_step_id, parent_resource_id`,
             [ids],
           );
 
-          return { cleaned: updated.rows.length };
+          const updatedRows = updated.rows as {
+            id: string;
+            parent_run_id: string | null;
+            parent_step_id: string | null;
+            parent_resource_id: string | null;
+          }[];
+
+          for (const r of updatedRows) {
+            if (r.parent_run_id) {
+              await engine.notifyParentOfChildTerminalRun({
+                id: r.id,
+                parentRunId: r.parent_run_id,
+                parentStepId: r.parent_step_id,
+                parentResourceId: r.parent_resource_id,
+              });
+            }
+          }
+          return { selected: ids.length, cleaned: updated.rows.length };
         });
 
         totalCleaned += cleanUpAPageResult.cleaned;
 
-        if (cleanUpAPageResult.cleaned < PAGE) {
+        if (cleanUpAPageResult.selected < PAGE) {
           drained = true;
           break;
         }
