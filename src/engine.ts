@@ -8,9 +8,9 @@ import {
   isInvokeChildWorkflowTimelineEntry,
   PAUSE_EVENT_NAME,
   scheduleQueueNameFor,
-  waitForTimelineKey,
   WORKFLOW_RUN_DLQ_QUEUE_NAME,
   WORKFLOW_RUN_QUEUE_NAME,
+  waitForTimelineKey,
 } from './constants';
 import { runMigrations } from './db/migration';
 import {

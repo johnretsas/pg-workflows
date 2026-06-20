@@ -1,8 +1,8 @@
 import type { Db } from 'pg-boss';
-import type { ScheduledCleanUpByTimeoutConfig } from '.';
 import { workflow } from '../definition';
 import type { WorkflowEngine } from '../engine';
 import type { InputParameters, WorkflowDefinition } from '../types';
+import type { ScheduledCleanUpByTimeoutConfig } from '.';
 
 const PAGE = 100;
 const DEFAULT_CONFIG = { schedule: '10m', retries: 3, maxPagesPerRun: 10 };
@@ -65,6 +65,7 @@ const scheduledCleanUpByTimeout: (
               });
             }
           }
+
           return { selected: ids.length, cleaned: updated.rows.length };
         });
 
